@@ -1,5 +1,13 @@
-from flask import Flask, render_template, request
-from post import Post
+from flask import Flask, render_template, redirect, url_for, request
+from flask_bootstrap import Bootstrap5
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Integer, String, Text
+from flask_wtf import FlaskForm
+from wtforms import StringField, SubmitField
+from wtforms.validators import DataRequired
+from flask_ckeditor import CKEditor, CKEditorField
+from datetime import date
 import smtplib
 import os
 from dotenv import load_dotenv
@@ -9,13 +17,99 @@ load_dotenv()
 MY_EMAIL = os.getenv("EMAIL") # Your Email
 MY_PASSWORD = os.getenv("PASSWORD") # Your App Password from Google (16 characters long string with no spaces)
 
-posts = requests.get("https://api.npoint.io/844f6145da7090ef192e").json() # Dummy Blogs
-post_objects = [Post(post["id"], post["title"], post["subtitle"], post["body"], post["author"], post["posted_on"], post["image_url"]) for post in posts]
+class CreatePostForm(FlaskForm):
+    title = StringField(label='Title', validators=[DataRequired()])
+    subtitle = StringField(label='Sub Title', validators=[DataRequired()])
+    author = StringField(label="Author's Name", validators=[DataRequired()])
+    image = StringField(label='Image Url', validators=[DataRequired()])
+    body = CKEditorField("body", validators=[DataRequired()])
+    submit = SubmitField(label="Submit Post")
 
 app = Flask(__name__)
-@app.route("/")
-def home():
-    return render_template("index.html", posts=post_objects)
+app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
+app.config['CKEDITOR_ENABLE_CODESNIPPET'] = True
+app.config['CKEDITOR_PKG_TYPE'] = 'full'
+Bootstrap5(app)
+ckeditor = CKEditor(app)
+
+# CREATE DATABASE
+class Base(DeclarativeBase):
+    pass
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
+db = SQLAlchemy(model_class=Base)
+db.init_app(app)
+
+# CONFIGURE TABLE
+class BlogPost(db.Model):
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(250), unique=True, nullable=False)
+    subtitle: Mapped[str] = mapped_column(String(250), nullable=False)
+    date: Mapped[str] = mapped_column(String(250), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    author: Mapped[str] = mapped_column(String(250), nullable=False)
+    img_url: Mapped[str] = mapped_column(String(250), nullable=False)
+
+
+with app.app_context():
+    db.create_all()
+
+
+@app.route('/')
+def get_all_posts():
+    result = db.session.execute(db.select(BlogPost))
+    posts = result.scalars().all()
+    return render_template("index.html", all_posts=posts)
+
+@app.route('/post/<int:post_id>')
+def show_post(post_id):
+    requested_post = db.get_or_404(BlogPost, post_id)
+    return render_template("post.html", post=requested_post)
+
+
+@app.route("/new-post", methods=["GET", "POST"])
+def add_new_post():
+    form = CreatePostForm()
+    if form.validate_on_submit():
+        new_post = BlogPost(
+            title=form.title.data,
+            subtitle=form.subtitle.data,
+            body=form.body.data,
+            img_url=form.image.data,
+            author=form.author.data,
+            date=date.today().strftime("%B %d, %Y")
+        )
+        db.session.add(new_post)
+        db.session.commit()
+        return redirect(url_for("get_all_posts"))
+    return render_template("make-post.html", form=form)
+
+@app.route("/edit-post/<int:post_id>", methods=["GET", "POST"])
+def edit_post(post_id):
+    post = db.get_or_404(BlogPost, post_id)
+    edit_form = CreatePostForm(
+        title=post.title,
+        subtitle=post.subtitle,
+        body=post.body,
+        image=post.img_url,
+        author=post.author
+    )
+    if edit_form.validate_on_submit():
+        post.title = edit_form.title.data
+        post.subtitle = edit_form.subtitle.data
+        post.img_url = edit_form.image.data
+        post.author = edit_form.author.data
+        post.body = edit_form.body.data
+        db.session.commit()
+        return redirect(url_for("show_post", post_id=post.id))
+    return render_template("make-post.html", form=edit_form, is_edit=True)
+
+@app.route("/delete/<int:post_id>")
+def delete_post(post_id):
+    post_to_delete = db.get_or_404(BlogPost, post_id)
+    db.session.delete(post_to_delete)
+    db.session.commit()
+    return redirect(url_for("get_all_posts"))
+
 
 @app.route("/about")
 def about():
@@ -46,14 +140,6 @@ def contact():
         return render_template("contact.html", msg_sent=True)
     
     return render_template("contact.html", msg_sent=False)
-
-@app.route("/post/<int:index>")
-def show_post(index):
-    requested_post = None
-    for post in post_objects:
-        if post.id == index:
-            requested_post = post
-    return render_template("post.html", post=requested_post)
 
 if __name__ == "__main__":
     app.run(debug=True)
