@@ -8,7 +8,7 @@
     />
     <meta name="description" content="" />
     <meta name="author" content="" />
-    <title>Blogs</title>
+    <title>Hamza's Blog</title>
     {% block styles %}
     <!-- Load Bootstrap-Flask CSS here -->
     {{ bootstrap.load_css() }}
@@ -66,6 +66,31 @@
                 >Home</a
               >
             </li>
+            <!-- TODO: Only show Login/Register if user is logged out. Otherwise show "Log Out" -->
+            {% if not current_user.is_authenticated %}
+              <li class="nav-item">
+                <a
+                  class="nav-link px-lg-3 py-3 py-lg-4"
+                  href="{{ url_for('login') }}"
+                  >Login</a
+                >
+              </li>
+              <li class="nav-item">
+                <a
+                  class="nav-link px-lg-3 py-3 py-lg-4"
+                  href="{{ url_for('register') }}"
+                  >Register</a
+                >
+              </li>
+            {% else %}
+              <li class="nav-item">
+                <a
+                  class="nav-link px-lg-3 py-3 py-lg-4"
+                  href="{{ url_for('logout') }}"
+                  >Log Out</a
+                >
+              </li>
+            {% endif %}
             <li class="nav-item">
               <a
                 class="nav-link px-lg-3 py-3 py-lg-4"
@@ -84,3 +109,16 @@
         </div>
       </div>
     </nav>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="z-index: 1000; top: 50px;" class="position-absolute m-3">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+  {% endwith %}
